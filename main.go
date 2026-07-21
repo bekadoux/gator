@@ -13,7 +13,7 @@ import (
 func main() {
 	args := os.Args
 	if len(args) < 2 {
-		fmt.Println("not enough arguments")
+		fmt.Println("Error: not enough arguments")
 		os.Exit(1)
 	}
 	args = args[1:]
@@ -21,7 +21,8 @@ func main() {
 	//cfgPath := "/home/bekadoux/.gatorconfig.json"
 	cfg, err := config.Read("")
 	if err != nil {
-		panic(err)
+		fmt.Printf("Could not read config file at %s.\n", cfg.Filepath)
+		os.Exit(1)
 	}
 
 	s := &state{}
@@ -29,10 +30,12 @@ func main() {
 
 	cmds := newCommands()
 	cmds.register("login", handlerLogin)
+	cmds.register("register", handlerRegister)
 
 	db, err := sql.Open("postgres", s.cfg.DbURL)
 	if err != nil {
-		panic(err)
+		fmt.Printf("Could not establish database connection.\n")
+		os.Exit(1)
 	}
 	s.db = database.New(db)
 
@@ -42,7 +45,7 @@ func main() {
 	}
 
 	if err := cmds.run(s, cmd); err != nil {
-		fmt.Printf("could not run %q: %s\n", cmd.name, err.Error())
+		fmt.Printf("%s: %s\n", cmd.name, err.Error())
 		os.Exit(1)
 	}
 }

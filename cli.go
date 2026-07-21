@@ -3,7 +3,13 @@ package main
 import (
 	"bekadoux/gator/internal/config"
 	"bekadoux/gator/internal/database"
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type state struct {
@@ -51,6 +57,13 @@ func handlerLogin(s *state, cmd command) error {
 		return fmt.Errorf("too many arguments for %q", cmd.name)
 	}
 
+	userName := cmd.args[0]
+	if exists, err := checkUserExists(s, userName); err == nil && !exists {
+		return fmt.Errorf("user %q doesn't exist", userName)
+	} else if err != nil {
+		return err
+	}
+
 	if err := s.cfg.SetUser(cmd.args[0]); err != nil {
 		return fmt.Errorf("%q: could not set user name: %w", cmd.name, err)
 	}
@@ -67,7 +80,40 @@ func handlerRegister(s *state, cmd command) error {
 		return fmt.Errorf("too many arguments for %q", cmd.name)
 	}
 
-	database.CreateUserParams
+	userName := cmd.args[0]
+	if exists, err := checkUserExists(s, userName); err == nil && exists {
+		return fmt.Errorf("user %q already exists", userName)
+	} else if err != nil {
+		return err
+	}
+
+	userParams := database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		Name:      userName,
+	}
+
+	user, err := s.db.CreateUser(context.Background(), userParams)
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+
+	fmt.Printf("%+v was created\n", user)
+
+	if err := handlerLogin(s, cmd); err != nil {
+		return fmt.Errorf("login after register: %w", err)
+	}
 
 	return nil
+}
+
+func checkUserExists(s *state, name string) (bool, error) {
+	_, err := s.db.GetUser(context.Background(), name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("check whether user %q exists: %w", name, err)
+	}
+	return true, nil
 }
