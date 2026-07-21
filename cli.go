@@ -50,11 +50,8 @@ func newCommands() *commands {
 }
 
 func handlerLogin(s *state, cmd command) error {
-	if len(cmd.args) == 0 {
-		return fmt.Errorf("no args provided for %q", cmd.name)
-	}
-	if len(cmd.args) > 1 {
-		return fmt.Errorf("too many arguments for %q", cmd.name)
+	if len(cmd.args) != 1 {
+		return fmt.Errorf("usage: %v <name>", cmd.name)
 	}
 
 	userName := cmd.args[0]
@@ -73,11 +70,8 @@ func handlerLogin(s *state, cmd command) error {
 }
 
 func handlerRegister(s *state, cmd command) error {
-	if len(cmd.args) == 0 {
-		return fmt.Errorf("no args provided for %q", cmd.name)
-	}
-	if len(cmd.args) > 1 {
-		return fmt.Errorf("too many arguments for %q", cmd.name)
+	if len(cmd.args) != 1 {
+		return fmt.Errorf("usage: %v <name>", cmd.name)
 	}
 
 	userName := cmd.args[0]
@@ -105,6 +99,45 @@ func handlerRegister(s *state, cmd command) error {
 		return fmt.Errorf("login after register: %w", err)
 	}
 
+	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	if len(cmd.args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.name)
+	}
+
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		fmt.Println("Failed getting users from table.")
+		return fmt.Errorf("getting all users: %w", err)
+	}
+	if len(users) == 0 {
+		fmt.Println("There are no users yet.")
+		return nil
+	}
+
+	for _, user := range users {
+		output := fmt.Sprintf("* %s", user.Name)
+		if user.Name == s.cfg.CurrentUserName {
+			output += " (current)"
+		}
+		fmt.Printf("%s\n", output)
+	}
+
+	return nil
+}
+
+func handlerReset(s *state, cmd command) error {
+	if len(cmd.args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.name)
+	}
+
+	err := s.db.DeleteUsers(context.Background())
+	if err != nil {
+		fmt.Println("Failed reseting users table.")
+		return fmt.Errorf("deleting all users: %w", err)
+	}
 	return nil
 }
 

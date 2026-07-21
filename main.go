@@ -27,10 +27,13 @@ func main() {
 
 	s := &state{}
 	s.cfg = &cfg
+	fmt.Println(s.cfg)
 
 	cmds := newCommands()
 	cmds.register("login", handlerLogin)
 	cmds.register("register", handlerRegister)
+	cmds.register("users", handlerUsers)
+	cmds.register("reset", handlerReset)
 
 	db, err := sql.Open("postgres", s.cfg.DbURL)
 	if err != nil {
