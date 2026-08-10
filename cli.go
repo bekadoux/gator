@@ -3,6 +3,7 @@ package main
 import (
 	"bekadoux/gator/internal/config"
 	"bekadoux/gator/internal/database"
+	"bekadoux/gator/internal/rss"
 	"context"
 	"database/sql"
 	"errors"
@@ -138,6 +139,21 @@ func handlerReset(s *state, cmd command) error {
 		fmt.Println("Failed reseting users table.")
 		return fmt.Errorf("deleting all users: %w", err)
 	}
+	return nil
+}
+
+func handlerAgg(s *state, cmd command) error {
+	if len(cmd.args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.name)
+	}
+
+	testFeedUrl := "https://www.wagslane.dev/index.xml"
+	feed, err := rss.FetchFeed(context.Background(), testFeedUrl)
+	if err != nil {
+		return err
+	}
+	fmt.Println(feed)
+
 	return nil
 }
 

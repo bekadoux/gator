@@ -2,10 +2,10 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
+
+	"bekadoux/gator/internal/common"
 )
 
 const defaultConfigFilename = ".gatorconfig.json"
@@ -40,7 +40,7 @@ func (c *Config) write() (err error) {
 	if err != nil {
 		return fmt.Errorf("could not open file %q for writing: %w", path, err)
 	}
-	defer closeWithError(file, &err)
+	defer common.CloseWithError(&err, file, fmt.Sprintf("open file %q", path))
 
 	encoder := json.NewEncoder(file)
 	if err := encoder.Encode(c); err != nil {
@@ -64,7 +64,7 @@ func Read(path string) (cfg Config, err error) {
 		fmt.Println()
 		return Config{}, fmt.Errorf("could not read gator config file at %q: %w", cfg.Filepath, err)
 	}
-	defer closeWithError(file, &err)
+	defer common.CloseWithError(&err, file, fmt.Sprintf("open file %q", cfg.Filepath))
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&cfg); err != nil {
@@ -83,11 +83,4 @@ func getDefaultConfigFilePath() (string, error) {
 	path := fmt.Sprintf("%s/%s", homeDir, defaultConfigFilename)
 
 	return path, nil
-}
-
-// Should be deffered.
-func closeWithError(closer io.Closer, errp *error) {
-	if closeErr := closer.Close(); closeErr != nil {
-		*errp = errors.Join(*errp, closeErr)
-	}
 }
