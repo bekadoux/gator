@@ -143,16 +143,74 @@ func handlerReset(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-	if len(cmd.args) != 0 {
-		return fmt.Errorf("usage: %v", cmd.name)
+	if len(cmd.args) != 1 {
+		return fmt.Errorf("usage: %v <url>", cmd.name)
 	}
 
-	testFeedUrl := "https://www.wagslane.dev/index.xml"
-	feed, err := rss.FetchFeed(context.Background(), testFeedUrl)
+	feed, err := rss.FetchFeed(context.Background(), cmd.args[0])
 	if err != nil {
 		return err
 	}
 	fmt.Println(feed)
+
+	return nil
+}
+
+func handlerAddFeed(s *state, cmd command) error {
+	if len(cmd.args) != 2 {
+		return fmt.Errorf("usage: %v <feed name> <feed url>", cmd.name)
+	}
+
+	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not get current user from database: %w", err)
+	}
+
+	feedParams := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		Name:      cmd.args[0],
+		Url:       cmd.args[1],
+		UserID:    user.ID,
+	}
+	feed, err := s.db.CreateFeed(context.Background(), feedParams)
+	if err != nil {
+		return fmt.Errorf("could not create feed: %w", err)
+	}
+
+	fmt.Printf("Feed %q at %s created successfully.\n", feed.Name, feed.Url)
+
+	return nil
+}
+
+func handlerFeeds(s *state, cmd command) error {
+	if len(cmd.args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.name)
+	}
+
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		fmt.Println("Failed getting feeds from table.")
+		return fmt.Errorf("getting all feeds: %w", err)
+	}
+	if len(feeds) == 0 {
+		fmt.Println("No feeds added so far.")
+		return nil
+	}
+
+	for _, feed := range feeds {
+		creator, err := s.db.GetUserByID(context.Background(), feed.UserID)
+		if err != nil {
+			return fmt.Errorf("could not get feed creator: %w", err)
+		}
+		creatorName := creator.Name
+
+		output := fmt.Sprintf("* Name: %s\n", feed.Name)
+		output += fmt.Sprintf("* URL: %s\n", feed.Url)
+		output += fmt.Sprintf("* Creator Name: %s\n", creatorName)
+		fmt.Printf("%s\n", output)
+	}
 
 	return nil
 }

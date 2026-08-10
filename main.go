@@ -27,7 +27,6 @@ func main() {
 
 	s := &state{}
 	s.cfg = &cfg
-	fmt.Println(s.cfg)
 
 	cmds := newCommands()
 	cmds.register("login", handlerLogin)
@@ -35,6 +34,8 @@ func main() {
 	cmds.register("users", handlerUsers)
 	cmds.register("reset", handlerReset)
 	cmds.register("agg", handlerAgg)
+	cmds.register("addfeed", handlerAddFeed)
+	cmds.register("feeds", handlerFeeds)
 
 	db, err := sql.Open("postgres", s.cfg.DbURL)
 	if err != nil {
