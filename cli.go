@@ -156,14 +156,9 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) != 2 {
 		return fmt.Errorf("usage: %v <feed name> <feed url>", cmd.name)
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("could not get current user from database: %w", err)
 	}
 
 	feedName, feedUrl := cmd.args[0], cmd.args[1]
@@ -183,7 +178,7 @@ func handlerAddFeed(s *state, cmd command) error {
 	fmt.Printf("Feed %q at %s created successfully.\n", feed.Name, feed.Url)
 
 	cmd.args = []string{feedUrl}
-	err = handlerFollow(s, cmd)
+	err = handlerFollow(s, cmd, user)
 	if err != nil {
 		return fmt.Errorf("could not follow newly added feed %q: %w", feedName, err)
 	}
@@ -222,14 +217,9 @@ func handlerFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) != 1 {
 		return fmt.Errorf("usage: %v <feed url>", cmd.name)
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("could not get current user from database: %w", err)
 	}
 
 	feed, err := s.db.GetFeedByURL(context.Background(), cmd.args[0])
@@ -253,14 +243,9 @@ func handlerFollow(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
+func handlerFollowing(s *state, cmd command, user database.User) error {
 	if len(cmd.args) != 0 {
 		return fmt.Errorf("usage: %v", cmd.name)
-	}
-
-	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("could not get current user from database: %w", err)
 	}
 
 	feedFollows, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
@@ -281,6 +266,43 @@ func handlerFollowing(s *state, cmd command) error {
 	}
 
 	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) != 1 {
+		return fmt.Errorf("usage: %v <feed url>", cmd.name)
+	}
+
+	feedURL := cmd.args[0]
+	feed, err := s.db.GetFeedByURL(context.Background(), feedURL)
+	if err != nil {
+		return fmt.Errorf("could not get feed from database (search by URL): %w", err)
+	}
+
+	err = s.db.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"could not delete feed follow from database (attempt to unfollow feed): %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func middlewareLoggedIn(
+	handler func(s *state, cmd command, user database.User) error,
+) func(*state, command) error {
+	return func(s *state, cmd command) error {
+		user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+		if err != nil {
+			return fmt.Errorf("could not get current user from database: %w", err)
+		}
+		return handler(s, cmd, user)
+	}
 }
 
 func checkUserExists(s *state, name string) (bool, error) {
