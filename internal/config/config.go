@@ -61,7 +61,6 @@ func Read(path string) (cfg Config, err error) {
 
 	file, err := os.Open(cfg.Filepath)
 	if err != nil {
-		fmt.Println()
 		return Config{}, fmt.Errorf("could not read gator config file at %q: %w", cfg.Filepath, err)
 	}
 	defer common.CloseWithError(&err, file, fmt.Sprintf("open file %q", cfg.Filepath))

@@ -89,12 +89,12 @@ func handlerRegister(s *state, cmd command) error {
 		Name:      userName,
 	}
 
-	user, err := s.db.CreateUser(context.Background(), userParams)
+	_, err := s.db.CreateUser(context.Background(), userParams)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
 
-	fmt.Printf("%+v was created\n", user)
+	fmt.Printf("User %q was created.\n", userName)
 
 	if err := handlerLogin(s, cmd); err != nil {
 		return fmt.Errorf("login after register: %w", err)
@@ -110,7 +110,6 @@ func handlerUsers(s *state, cmd command) error {
 
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
-		fmt.Println("Failed getting users from table.")
 		return fmt.Errorf("getting all users: %w", err)
 	}
 	if len(users) == 0 {
@@ -136,7 +135,6 @@ func handlerReset(s *state, cmd command) error {
 
 	err := s.db.DeleteUsers(context.Background())
 	if err != nil {
-		fmt.Println("Failed reseting users table.")
 		return fmt.Errorf("deleting all users: %w", err)
 	}
 	return nil
@@ -144,14 +142,22 @@ func handlerReset(s *state, cmd command) error {
 
 func handlerAgg(s *state, cmd command) error {
 	if len(cmd.args) != 1 {
-		return fmt.Errorf("usage: %v <url>", cmd.name)
+		return fmt.Errorf("usage: %v <time between requests>", cmd.name)
 	}
 
-	feed, err := rss.FetchFeed(context.Background(), cmd.args[0])
+	timeBetweenReqs, err := time.ParseDuration(cmd.args[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("could not parse time between requests for %s: %w", cmd.name, err)
 	}
-	fmt.Println(feed)
+
+	fmt.Printf("Collecting feeds every %s...\n", timeBetweenReqs.String())
+	ticker := time.NewTicker(timeBetweenReqs)
+	for ; ; <-ticker.C {
+		err := scrapeFeeds(s)
+		if err != nil {
+			fmt.Printf("Could not fetch feed: %s", err.Error())
+		}
+	}
 
 	return nil
 }
@@ -193,7 +199,6 @@ func handlerFeeds(s *state, cmd command) error {
 
 	feeds, err := s.db.GetFeeds(context.Background())
 	if err != nil {
-		fmt.Println("Failed getting feeds from table.")
 		return fmt.Errorf("getting all feeds: %w", err)
 	}
 	if len(feeds) == 0 {
@@ -303,6 +308,29 @@ func middlewareLoggedIn(
 		}
 		return handler(s, cmd, user)
 	}
+}
+
+func scrapeFeeds(s *state) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("could not get next feed to fetch: %w", err)
+	}
+
+	fullFeed, err := rss.FetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return fmt.Errorf("could not fetch feed %q: %w", feed.Name, err)
+	}
+	fmt.Printf("%s Item Titles:\n", feed.Name)
+	for _, item := range fullFeed.Channel.Item {
+		fmt.Printf("  - %s\n", item.Title)
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return fmt.Errorf("could not mark feed %q as fetched: %w", feed.Name, err)
+	}
+
+	return nil
 }
 
 func checkUserExists(s *state, name string) (bool, error) {
