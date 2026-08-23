@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -298,6 +300,37 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	return nil
 }
 
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	var limit int32
+	if len(cmd.args) == 1 {
+		parsed, err := strconv.ParseInt(cmd.args[0], 10, 32)
+		if err != nil {
+			return fmt.Errorf("could not parse argument %q to integer: %w", cmd.args[0], err)
+		}
+		limit = int32(parsed)
+	} else if len(cmd.args) == 0 {
+		limit = 2
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	})
+	if err != nil {
+		return fmt.Errorf("could not get posts for user: %w", err)
+	}
+
+	for _, post := range posts {
+		fmt.Printf("- %s\n", post.Title)
+		fmt.Printf("  Description: %s\n", post.Description)
+		fmt.Printf("  URL: %s\n", post.Url)
+		fmt.Printf("  Published at: %v\n", post.PublishedAt.Time.Format("2006-01-02 15:04"))
+		fmt.Println()
+	}
+
+	return nil
+}
+
 func middlewareLoggedIn(
 	handler func(s *state, cmd command, user database.User) error,
 ) func(*state, command) error {
@@ -316,13 +349,52 @@ func scrapeFeeds(s *state) error {
 		return fmt.Errorf("could not get next feed to fetch: %w", err)
 	}
 
+	fmt.Printf("Fetching feed %q...\n", feed.Name)
 	fullFeed, err := rss.FetchFeed(context.Background(), feed.Url)
 	if err != nil {
 		return fmt.Errorf("could not fetch feed %q: %w", feed.Name, err)
 	}
-	fmt.Printf("%s Item Titles:\n", feed.Name)
+
 	for _, item := range fullFeed.Channel.Item {
-		fmt.Printf("  - %s\n", item.Title)
+		parsedPubDate, err := time.Parse(time.RFC1123Z, item.PubDate)
+		valid := true
+		if err != nil {
+			fmt.Printf("Warning: could not parse publication date %q\n", item.PubDate)
+			parsedPubDate = time.Unix(0, 0).UTC()
+			valid = false
+		}
+		pubDate := sql.NullTime{
+			Time:  parsedPubDate,
+			Valid: valid,
+		}
+
+		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+			PublishedAt: pubDate,
+			Title:       item.Title,
+			Description: item.Description,
+			Url:         item.Link,
+			FeedID:      feed.ID,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				// ignoring duplicate URLs (should mostly be URL constraint violation)
+			} else {
+				fmt.Printf(
+					"Warning: could not record post %q in database from feed %q: %s\n",
+					item.Title,
+					feed.Name,
+					err.Error(),
+				)
+			}
+		} else {
+			fmt.Printf("New post: %q\n", item.Title)
+			fmt.Printf("  Description: %s\n", item.Description)
+			fmt.Printf("  Link: %s\n", item.Link)
+			fmt.Println()
+		}
 	}
 
 	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
