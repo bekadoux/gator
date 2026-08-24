@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -152,12 +154,26 @@ func handlerAgg(s *state, cmd command) error {
 		return fmt.Errorf("could not parse time between requests for %s: %w", cmd.name, err)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	fmt.Printf("Collecting feeds every %s...\n", timeBetweenReqs.String())
 	ticker := time.NewTicker(timeBetweenReqs)
-	for ; ; <-ticker.C {
-		err := scrapeFeeds(s)
+	defer ticker.Stop()
+
+	for {
+		err := scrapeFeeds(ctx, s)
+		if ctx.Err() != nil {
+			return nil
+		}
 		if err != nil {
-			fmt.Printf("Could not fetch feed: %s", err.Error())
+			fmt.Printf("Could not fetch feed: %s\n", err.Error())
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
 		}
 	}
 }
@@ -343,19 +359,28 @@ func middlewareLoggedIn(
 	}
 }
 
-func scrapeFeeds(s *state) error {
-	feed, err := s.db.GetNextFeedToFetch(context.Background())
+func scrapeFeeds(ctx context.Context, s *state) error {
+	feed, err := s.db.GetNextFeedToFetch(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get next feed to fetch: %w", err)
 	}
+	// Advance the schedule before requesting so a broken feed cannot starve the rest.
+	err = s.db.MarkFeedFetched(ctx, feed.ID)
+	if err != nil {
+		return fmt.Errorf("could not mark feed %q as fetched: %w", feed.Name, err)
+	}
 
 	fmt.Printf("Fetching feed %q...\n", feed.Name)
-	fullFeed, err := rss.FetchFeed(context.Background(), feed.Url)
+	fullFeed, err := rss.FetchFeed(ctx, feed.Url)
 	if err != nil {
 		return fmt.Errorf("could not fetch feed %q: %w", feed.Name, err)
 	}
 
 	for _, item := range fullFeed.Channel.Item {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		parsedPubDate, err := time.Parse(time.RFC1123Z, item.PubDate)
 		valid := true
 		if err != nil {
@@ -368,7 +393,7 @@ func scrapeFeeds(s *state) error {
 			Valid: valid,
 		}
 
-		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+		_, err = s.db.CreatePost(ctx, database.CreatePostParams{
 			ID:          uuid.New(),
 			CreatedAt:   time.Now().UTC(),
 			UpdatedAt:   time.Now().UTC(),
@@ -379,6 +404,9 @@ func scrapeFeeds(s *state) error {
 			FeedID:      feed.ID,
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
 				// ignoring duplicate URLs (should mostly be URL constraint violation)
 			} else {
@@ -395,11 +423,6 @@ func scrapeFeeds(s *state) error {
 			fmt.Printf("  Link: %s\n", item.Link)
 			fmt.Println()
 		}
-	}
-
-	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
-	if err != nil {
-		return fmt.Errorf("could not mark feed %q as fetched: %w", feed.Name, err)
 	}
 
 	return nil

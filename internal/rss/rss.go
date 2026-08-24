@@ -41,6 +41,9 @@ func FetchFeed(ctx context.Context, feedURL string) (*Feed, error) {
 		return &Feed{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer common.CloseWithError(&err, res.Body, "response body")
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return &Feed{}, fmt.Errorf("request failed with status %s", res.Status)
+	}
 
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
