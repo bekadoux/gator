@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"bekadoux/gator/internal/common"
+	"github.com/bekadoux/gator/internal/common"
 )
 
 const defaultConfigFilename = ".gatorconfig.json"

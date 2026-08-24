@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bekadoux/gator/internal/config"
-	"bekadoux/gator/internal/database"
-	"bekadoux/gator/internal/rss"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bekadoux/gator/internal/config"
+	"github.com/bekadoux/gator/internal/database"
+	"github.com/bekadoux/gator/internal/rss"
 	"github.com/google/uuid"
 )
 
@@ -160,8 +160,6 @@ func handlerAgg(s *state, cmd command) error {
 			fmt.Printf("Could not fetch feed: %s", err.Error())
 		}
 	}
-
-	return nil
 }
 
 func handlerAddFeed(s *state, cmd command, user database.User) error {
@@ -310,6 +308,8 @@ func handlerBrowse(s *state, cmd command, user database.User) error {
 		limit = int32(parsed)
 	} else if len(cmd.args) == 0 {
 		limit = 2
+	} else {
+		return fmt.Errorf("usage: %v <post limit>", cmd.name)
 	}
 
 	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{

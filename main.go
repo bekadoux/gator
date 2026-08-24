@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bekadoux/gator/internal/config"
-	"bekadoux/gator/internal/database"
 	"database/sql"
 	"fmt"
 	"os"
 
+	"github.com/bekadoux/gator/internal/config"
+	"github.com/bekadoux/gator/internal/database"
 	_ "github.com/lib/pq"
 )
 

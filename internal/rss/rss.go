@@ -1,13 +1,14 @@
 package rss
 
 import (
-	"bekadoux/gator/internal/common"
 	"context"
 	"encoding/xml"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
+
+	"github.com/bekadoux/gator/internal/common"
 )
 
 type Feed struct {
